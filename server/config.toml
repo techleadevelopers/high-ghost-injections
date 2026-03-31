@@ -1,0 +1,18 @@
+[server]
+host = "0.0.0.0"
+port = 8443
+# Em produção, use HTTPS com certificado real
+tls_enabled = false
+cert_file = "./certs/cert.pem"
+key_file = "./certs/key.pem"
+
+[database]
+path = "./data/c2.db"
+
+[auth]
+api_key = "YOUR_SECRET_API_KEY_CHANGE_ME"
+discord_webhook = "https://discord.com/api/webhooks/YOUR_WEBHOOK/TOKEN"
+
+[logging]
+level = "info"
+file = "./data/c2.log"
