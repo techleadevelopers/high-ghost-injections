@@ -1,0 +1,82 @@
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+*.exp
+*.lib
+*.dll
+*.exe
+Cargo.lock
+
+# IDEs e editores
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Arquivos de dados do C2
+c2-server/data/
+c2-server/*.db
+c2-server/*.db-shm
+c2-server/*.db-wal
+c2-server/*.log
+
+# Payloads compilados (mas mantém o stage1.ps1 como template)
+c2-server/payloads/windows/*.exe
+c2-server/payloads/windows/*.dll
+!c2-server/payloads/windows/*.ps1
+
+# Certificados TLS (nunca suba chaves privadas!)
+c2-server/certs/
+*.pem
+*.key
+*.crt
+
+# Configurações com credenciais
+c2-server/config.toml
+*.env
+.env.local
+.env.production
+
+# PDFs com JavaScript (não suba exploits prontos)
+*.pdf
+!README.md
+!docs/*.md
+
+# Arquivos temporários
+*.tmp
+*.temp
+*.bak
+*.backup
+*.old
+
+# Logs
+*.log
+logs/
+c2-server/data/logs/
+
+# Dumps e exfils (dados sensíveis)
+c2-server/data/exfils/
+c2-server/data/victims/
+c2-server/data/alvos/
+
+# Windows
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+.directory
+*~
+
+# Arquivos de build
+dist/
+build/
+out/
