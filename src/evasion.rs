@@ -1,33 +1,29 @@
 use winapi::um::{
-    winnt::{HANDLE, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ},
-    handleapi::CloseHandle,
-    memoryapi::OpenProcess,
-    processthreadsapi::GetCurrentProcessId,
     tlhelp32::{CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS},
+    handleapi::CloseHandle,
 };
-use std::ptr;
 use std::mem;
-use std::time::{SystemTime, UNIX_EPOCH};
+
+// Declaração externa das funções da kernel32
+#[link(name = "kernel32")]
+extern "system" {
+    fn IsDebuggerPresent() -> i32;
+    fn GetTickCount64() -> u64;
+}
 
 pub fn is_debugged() -> bool {
     // Check 1: IsDebuggerPresent
-    if unsafe { winapi::um::debugapi::IsDebuggerPresent() } != 0 {
+    if unsafe { IsDebuggerPresent() } != 0 {
         return true;
     }
     
-    // Check 2: NtQueryInformationProcess (DebugPort)
-    // Implementação via NTAPI
-    if check_debug_port() {
-        return true;
-    }
-    
-    // Check 3: Tempo de uptime do sistema (sandbox detection)
+    // Check 2: Tempo de uptime do sistema
     let uptime = get_system_uptime();
     if uptime < 300 { // Menos de 5 minutos
         return true;
     }
     
-    // Check 4: Número de processos (sandbox usually has < 30)
+    // Check 3: Número de processos (sandbox geralmente tem < 30)
     if count_processes() < 30 {
         return true;
     }
@@ -35,14 +31,8 @@ pub fn is_debugged() -> bool {
     false
 }
 
-fn check_debug_port() -> bool {
-    // Usa NtQueryInformationProcess via ntapi
-    // Simplificado: se tiver debug port, retorna true
-    false
-}
-
 fn get_system_uptime() -> u64 {
-    let tick_count = unsafe { winapi::um::sysinfoapi::GetTickCount64() };
+    let tick_count = unsafe { GetTickCount64() };
     tick_count / 1000 // segundos
 }
 
